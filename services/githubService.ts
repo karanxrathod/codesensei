@@ -29,12 +29,18 @@ export class GitHubService {
       const headers: HeadersInit = {
         'Accept': 'application/vnd.github.v3+json'
       };
-      if (token) {
-        headers['Authorization'] = `token ${token}`;
+      if (token?.trim()) {
+        headers['Authorization'] = `token ${token.trim()}`;
       }
 
       const repoResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
-      if (repoResponse.status === 403) throw new Error('GitHub API rate limit exceeded. Please try again later.');
+      
+      if (repoResponse.status === 403) {
+        const rateLimitReset = repoResponse.headers.get('x-ratelimit-reset');
+        const resetDate = rateLimitReset ? new Date(parseInt(rateLimitReset) * 1000).toLocaleTimeString() : 'later';
+        throw new Error(`GitHub API rate limit exceeded. Limit resets at ${resetDate}. Use a Personal Access Token in 'Advanced' to bypass.`);
+      }
+      
       if (!repoResponse.ok) throw new Error('Repository not found or private');
       
       const repoData = await repoResponse.json();
@@ -65,17 +71,23 @@ export class GitHubService {
     }
   }
 
-  async fetchFullProjectContent(owner: string, repo: string, branch: string = 'main'): Promise<ProjectFile[]> {
+  async fetchFullProjectContent(owner: string, repo: string, branch: string = 'main', token?: string): Promise<ProjectFile[]> {
     try {
-      // 1. Get recursive tree
-      const treeResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`);
+      const headers: HeadersInit = {
+        'Accept': 'application/vnd.github.v3+json'
+      };
+      if (token?.trim()) {
+        headers['Authorization'] = `token ${token.trim()}`;
+      }
+
+      // 1. Get recursive tree (API Call - 1 request)
+      const treeResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, { headers });
       if (!treeResponse.ok) {
-        if (treeResponse.status === 403) throw new Error('GitHub API Rate Limit Exceeded');
+        if (treeResponse.status === 403) throw new Error('GitHub API Rate Limit Exceeded during tree fetch.');
         throw new Error(`Failed to fetch repo tree (Status: ${treeResponse.status})`);
       }
       
       const treeData = await treeResponse.json();
-      
       if (!treeData.tree) return [];
 
       // 2. Filter for source files only
@@ -83,7 +95,6 @@ export class GitHubService {
         .filter((node: any) => node.type === 'blob')
         .filter((node: any) => {
            const path = node.path.toLowerCase();
-           // Filter for valuable text files only
            return path.endsWith('.ts') || 
                   path.endsWith('.tsx') || 
                   path.endsWith('.js') || 
@@ -98,14 +109,19 @@ export class GitHubService {
 
       const projectFiles: ProjectFile[] = [];
       
+      // 3. Fetch file contents (Using raw.githubusercontent.com - 0 API requests)
+      // This bypasses the API rate limit for content reading.
       for (const node of sourceFiles) {
         try {
-          const fileResponse = await fetch(node.url);
-          if (!fileResponse.ok) continue;
+          const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${node.path}`;
+          const fileResponse = await fetch(rawUrl);
           
-          const fileData = await fileResponse.json();
-          // GitHub content is base64 encoded
-          const content = atob(fileData.content.replace(/\s/g, ''));
+          if (!fileResponse.ok) {
+            console.warn(`Failed to fetch raw file: ${node.path} via raw URL, skipping.`);
+            continue;
+          }
+          
+          const content = await fileResponse.text();
           
           projectFiles.push({
             path: node.path,
@@ -113,7 +129,7 @@ export class GitHubService {
             size: node.size
           });
         } catch (e) {
-          console.warn(`Failed to fetch file: ${node.path}`, e);
+          console.warn(`Error processing file: ${node.path}`, e);
         }
       }
 

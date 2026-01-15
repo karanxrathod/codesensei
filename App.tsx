@@ -243,16 +243,18 @@ const AuthScreen: React.FC<{ onAuth: (type: 'google' | 'guest') => void; error?:
 const UploadModal: React.FC<{ 
   onClose: () => void; 
   onLocalUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onGithubUpload: (url: string) => void;
+  onGithubUpload: (url: string, token?: string) => void;
   isAnalyzing: boolean;
 }> = ({ onClose, onLocalUpload, onGithubUpload, isAnalyzing }) => {
   const [activeTab, setActiveTab] = useState<'local' | 'github'>('local');
   const [githubUrl, setGithubUrl] = useState('');
+  const [githubToken, setGithubToken] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleGithubSubmit = () => {
     if (!githubUrl.trim()) return;
-    onGithubUpload(githubUrl);
+    onGithubUpload(githubUrl, githubToken);
   };
 
   return (
@@ -305,17 +307,40 @@ const UploadModal: React.FC<{
                   value={githubUrl}
                   onChange={(e) => setGithubUrl(e.target.value)}
                   placeholder="https://github.com/facebook/react"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-all"
                 />
               </div>
+
+              <div className="space-y-2">
+                <button 
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest pl-1 flex items-center gap-1 hover:text-indigo-400"
+                >
+                  {showAdvanced ? '▾' : '▸'} Advanced (Bypass Rate Limits)
+                </button>
+                {showAdvanced && (
+                  <div className="space-y-2 animate-in slide-in-from-top-2">
+                    <input 
+                      type="password"
+                      value={githubToken}
+                      onChange={(e) => setGithubToken(e.target.value)}
+                      placeholder="Optional: GitHub Personal Access Token"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                    />
+                    <p className="text-[9px] text-zinc-500 px-1 leading-relaxed">
+                      GitHub limits anonymous requests. Use a token to fetch larger projects or bypass 403 errors.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <PrimaryButton 
                 onClick={handleGithubSubmit} 
-                className="w-full" 
+                className="w-full mt-2" 
                 disabled={isAnalyzing || !githubUrl.trim()}
               >
                 {isAnalyzing ? <LoadingDots /> : "Analyze Repository"}
               </PrimaryButton>
-              <p className="text-[10px] text-zinc-500 text-center">We'll fetch metadata and index codebase for RAG chat.</p>
             </div>
           )}
         </div>
@@ -648,7 +673,7 @@ export default function App() {
     }
   };
 
-  const handleGithubUpload = async (url: string) => {
+  const handleGithubUpload = async (url: string, token?: string) => {
     const parsed = githubService.validateGitHubUrl(url);
     if (!parsed || !user) {
       showToast("Invalid GitHub URL format.");
@@ -659,12 +684,12 @@ export default function App() {
     try {
       // Stage 1: Meta
       showToast("Fetching repository metadata...");
-      const metadata = await githubService.fetchRepoMetadata(parsed.owner, parsed.repo);
+      const metadata = await githubService.fetchRepoMetadata(parsed.owner, parsed.repo, token);
       if (!metadata) throw new Error("GitHub metadata fetch failed.");
 
       // Stage 2: Files
       showToast("Reading project files...");
-      const projectFiles = await githubService.fetchFullProjectContent(parsed.owner, parsed.repo, metadata.defaultBranch);
+      const projectFiles = await githubService.fetchFullProjectContent(parsed.owner, parsed.repo, metadata.defaultBranch, token);
       if (!projectFiles || projectFiles.length === 0) throw new Error("Repository appears to be empty or inaccessible.");
 
       // Stage 3: Database Save
@@ -700,7 +725,7 @@ export default function App() {
       if (e.message.toLowerCase().includes("permission") || e.message.toLowerCase().includes("index")) {
         setConfigError(e.message);
       } else {
-        showToast(`Fetch failed: ${e.message}`);
+        showToast(e.message);
       }
       setIsAnalyzing(false);
     }
