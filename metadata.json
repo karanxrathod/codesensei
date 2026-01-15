@@ -1,0 +1,8 @@
+{
+  "name": "CodeSensei",
+  "description": "An AI-powered companion for students and developers to understand, analyze, and learn from code faster.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
