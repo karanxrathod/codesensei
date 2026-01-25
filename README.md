@@ -13,9 +13,10 @@
 
 A production-ready AI-powered platform that helps engineering students and developers understand codebases faster. Upload your projects or connect GitHub repositories to get instant architecture explanations, interactive learning tasks, and AI-powered guidance.
 
-🌐 **Live Demo:** [https://codesensei.vercel.app](https://codesensei.vercel.app)  
-📽️ **Demo Video:** [Watch on YouTube](#)  
-🏆 **Built for:** Gemini 3 Hackathon
+🌐 **Live Demo:** [https://codesensei.app](https://codesensei-929150751698.us-west1.run.app/
+)  
+📽️ **Demo Video:** [Watch on YouTube](https://youtu.be/6K6oIdje2_k)  
+🏆 **Built for:** Hackathon
 
 ---
 
